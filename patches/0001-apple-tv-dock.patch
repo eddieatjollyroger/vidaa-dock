@@ -1,0 +1,456 @@
+diff --git a/check-bundle.mjs b/check-bundle.mjs
+index 53e8385..bd99912 100644
+--- a/check-bundle.mjs
++++ b/check-bundle.mjs
+@@ -65,7 +65,7 @@ for(const fn of e.listeners.get('key-up'))fn({keyCode:e.K.ENTER,stopPropagation(
+ assert.equal(ui.actionApp.appId,'1');assert.equal(e.launched.length,1,'Long OK does not launch');
+ ui.actionIndex=1;ui.select();assert.equal(ui.apps.length,3);assert.equal(ui.shelf().at(-1).appId,'164');
+ ui.show('savers');ui.index=0;ui.select();assert.equal(e.opened.length,0,'Empty media cannot launch a blank custom saver');
+-assert.match(ui.status,/Video/);component.beforeDestroy.call(ui);
++assert.match(ui.status,/video/i);component.beforeDestroy.call(ui);
+ assert.equal(e.listeners.get('key-down').size,0);assert.equal(e.listeners.get('key-up').size,0);
+ assert.equal(e.messages.size,0);
+ 
+diff --git a/native-actions.js b/native-actions.js
+index 962bd9d..aeb3808 100644
+--- a/native-actions.js
++++ b/native-actions.js
+@@ -39,9 +39,9 @@
+    root.document.body.addEventListener('key-down',this._keyDown);root.document.body.addEventListener('key-up',this._keyUp);
+   };
+   c.methods.stop=function(){this.cancelHold();this.actionApp=null;if(this.moving&&this._beforeMove)this.favorites=this._beforeMove;this.moving=false;root.document.body.removeEventListener('key-up',this._keyUp);stop.call(this);};
+-  c.methods.announce=function(){if(this.actionApp&&sdk.tts&&sdk.tts.isEnable())sdk.tts.speak(this.actionIndex===0?'Verschieben':'Vom Startbildschirm entfernen');else announce.call(this);};
++  c.methods.announce=function(){if(this.actionApp&&sdk.tts&&sdk.tts.isEnable())sdk.tts.speak(this.actionIndex===0?'Move':'Remove from Home');else announce.call(this);};
+   c.render=function(h){var result=render.call(this,h),vm=this;if(!this.actionApp)return result;var scale=(root.innerWidth||1920)/1920,p=function(n){return Math.round(n*scale)+'px';};
+-   var choices=['Verschieben','Vom Startbildschirm entfernen'];
++   var choices=['Move','Remove from Home'];
+    result.children.push(h('div',{key:'favorite-actions',attrs:{role:'dialog','aria-modal':'true','aria-label':this.actionApp.appName},style:{position:'absolute',left:'0',top:'0',width:'100%',height:'100%',backgroundColor:'rgba(0,0,0,.58)'}},[
+     h('div',{style:{position:'absolute',left:p(600),top:p(350),width:p(720),padding:p(40),boxSizing:'border-box',backgroundColor:'#15171d',borderRadius:p(30),border:p(1)+' solid #6b707e'}},[
+      h('div',{style:{fontSize:p(36),color:'#fff',marginBottom:p(30)}},[this.actionApp.appName])
+diff --git a/native-dock.js b/native-dock.js
+index e5a3ec2..a99d027 100644
+--- a/native-dock.js
++++ b/native-dock.js
+@@ -2,37 +2,66 @@
+ (function(root){'use strict';
+  var make=root.AlvidaaFreeMyTV;
+  var asset=root.OwnerAssetBase||'file:///hisenseUI/static/vidaa-clean-home/';
+- var preferred=[/netflix/i,/magenta/i,/prime|amazon/i,/disney/i,/youtube/i,/rtl|tvnow/i,/ard|das erste/i,/^zdf/i];
++ var preferred=[/cleanframe/i,/netflix/i,/magenta/i,/prime|amazon/i,/disney/i,/youtube/i,/rtl|tvnow/i,/ard|das erste/i,/^zdf/i];
+  function name(app){var n=app.appName||'';if(String(app.appId)===String((root.CleanHomeConfig||{}).storeAppId||''))return 'App Store';if(/rtl|tvnow/i.test(n))return 'RTL+';if(/ard|das erste/i.test(n))return 'ARD';if(/prime|amazon/i.test(n))return 'Prime Video';return n;}
+  function icon(app){return (root.CleanHomeConfig&&root.CleanHomeConfig.icons||{})[String(app.appId)]||null;}
+- function appColor(n){return /magenta/i.test(n)?'#dd007f':/zdf/i.test(n)?'#f16b00':/ard/i.test(n)?'#0646bf':'#191c22';}
++ function hsl2hex(h,sa,l){
++  h=((h%360)+360)%360;sa=sa/100;l=l/100;
++  var c=(1-Math.abs(2*l-1))*sa,x=c*(1-Math.abs((h/60)%2-1)),m=l-c/2,r=m,g=m,b=m;
++  if(h<60){r=c+m;g=x+m;}else if(h<120){r=x+m;g=c+m;}else if(h<180){g=c+m;b=x+m;}
++  else if(h<240){g=x+m;b=c+m;}else if(h<300){r=x+m;b=c+m;}else{r=c+m;b=x+m;}
++  return '#'+[r,g,b].map(function(v){var t=Math.round(v*255).toString(16);return t.length<2?'0'+t:t;}).join('');
++}
++function appColor(n){
++  var s=String(n||'');
++  if(/netflix/i.test(s))return '#e50914';
++  if(/prime|amazon/i.test(s))return '#00a8e1';
++  if(/youtube/i.test(s))return '#ff2d55';
++  if(/disney/i.test(s))return '#2f6bd8';
++  if(/magenta/i.test(s))return '#dd007f';
++  if(/zdf/i.test(s))return '#f16b00';
++  if(/ard/i.test(s))return '#0646bf';
++  if(/rtl/i.test(s))return '#ff2d55';
++  if(/plex/i.test(s))return '#e5a00d';
++  if(/spotify/i.test(s))return '#1db954';
++  if(/twitch/i.test(s))return '#9146ff';
++  if(/apple/i.test(s))return '#8e8e93';
++  if(/joyn/i.test(s))return '#00a9e0';
++  if(/wow|sky/i.test(s))return '#e6007e';
++  if(/dazn/i.test(s))return '#00d16c';
++  if(/paramount/i.test(s))return '#0064ff';
++  if(/clean/i.test(s))return '#5b7cfa';
++  var h=0;
++  for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))%360;
++  return hsl2hex(h,62,50);
++}
+  root.AlvidaaFreeMyTV=function(sdk){
+   var c=make(sdk),originalStart=c.methods.start,originalStop=c.methods.stop,originalSave=c.methods.save;
+   var originalData=c.data,k=sdk.key.KEYMAP;
+   c.data=function(){var d=originalData.call(this),p={};try{p=sdk.storage.get('owner.nativeDesign')||{};}catch(_){}
+    if(typeof p==='string')try{p=JSON.parse(p);}catch(_){p={};}
+-   d.motion=p.motion!==false;d.videoEnabled=p.video!==false;d.videoPlaying=false;d.videoError='';d.mediaRevision=0;d.metalFrame=0;d.appIndex=0;d.tabIndex=0;d.topIndex=0;d.status='';d.revision='owner-native-v2';return d;
++   d.motion=p.motion!==false;d.videoEnabled=p.video!==false;d.videoPlaying=false;d.videoError='';d.mediaRevision=0;d.metalFrame=0;d.appIndex=0;d.tabIndex=0;d.topIndex=0;d.artA='';d.artB='';d.artSlot=0;d.scrollRow=0;d.drawerOpen=false;d.stockMode=false;d.status='';d.revision='owner-native-v2';return d;
+   };
+   c.methods.shelf=function(){
+    if(this.favorites!==null)return this.favorites.map(function(id){return this.apps.filter(function(a){return String(a.appId)===id;})[0];},this).filter(Boolean);
+    var apps=this.apps,store=String((root.CleanHomeConfig||{}).storeAppId||''),seen={},ordered=[];
+    preferred.map(function(re){return apps.filter(function(a){return re.test(a.appName);})[0];}).concat(apps).forEach(function(app){
+     if(!app)return;var id=String(app.appId);if(id===store||seen[id])return;seen[id]=true;ordered.push(app);
+-   });return ordered.slice(0,8);
++   });return ordered.slice(0,18);
+   };
+   c.methods.save=function(){originalSave.call(this);sdk.storage.set('owner.nativeDesign',{motion:this.motion,video:this.videoEnabled});};
+   c.methods.tab=function(){return this.view==='inputs'?1:['tv','prefs','about','backgrounds','savers'].indexOf(this.view)>=0?2:0;};
+   c.methods.list=function(){
+    if(this.view==='inputs')return this.sources;
+    if(this.view==='apps'||this.view==='edit')return this.apps;
+-   if(this.view==='tv')return ['TV-Einstellungen','Alle Apps','Startseite anpassen','Bildschirmschoner','Hintergrundbild'];
++   if(this.view==='tv')return ['TV Settings','All Apps','Edit Home','Screen Saver','Wallpaper','Default menu'];
+    if(this.view==='backgrounds'||this.view==='savers'){
+     var current=root.OwnerMedia.selected(this.view==='savers'?'saver':'home').id;
+     var choices=root.OwnerMedia.list().map(function(item){return (item.id===current?'✓ ':'')+item.label;});
+-    return this.view==='savers'?['Jetzt starten'].concat(choices):choices;
++    return this.view==='savers'?['Start now'].concat(choices):choices;
+    }
+-   if(this.view==='prefs')return ['Favoriten auswählen','Favoriten sortieren','Bewegung: '+(this.motion?'An':'Aus'),'Video-Hintergrund: '+(this.videoEnabled?'An':'Aus'),'Zurück'];
+-   if(this.view==='about')return ['Zurück'];
++   if(this.view==='prefs')return ['Choose favourites','Reorder favourites','Motion: '+(this.motion?'On':'Off'),'Video background: '+(this.videoEnabled?'On':'Off'),'Back'];
++   if(this.view==='about')return ['Back'];
+    return this.shelf();
+   };
+   c.methods.routeFocus=function(){
+@@ -40,22 +69,55 @@
+    if(q.focusArea==='input'||Number(q.value)===k.SOURCE||(sdk.apc.CMDMETHOD.KEY_INPUT_START!=null&&q.startLauncherFrom===sdk.apc.CMDMETHOD.KEY_INPUT_START))this.show('inputs');
+    else{this.view='home';this.zone='shelf';this.index=this.appIndex||0;this.moving=false;this.clamp();}
+   };
+-  c.methods.clamp=function(){this.index=Math.max(0,Math.min(this.index,(this.zone==='top'?3:this.list().length)-1));};
++  c.methods.clamp=function(){
++   var n=this.zone==='top'?3:this.list().length;
++   this.index=n>0?Math.max(0,Math.min(this.index,n-1)):0;
++   if(this.view==='home'){
++    var rows=Math.max(1,Math.ceil(this.list().length/6)),shown=Math.min(rows,3),row=Math.floor(this.index/6),max=Math.max(0,rows-shown);
++    this.drawerOpen=row>0&&rows>1;
++    if(this.drawerOpen){
++     if(row<this.scrollRow)this.scrollRow=row;
++     if(row>this.scrollRow+shown-1)this.scrollRow=row-shown+1;
++     this.scrollRow=Math.max(0,Math.min(this.scrollRow,max));
++    }else this.scrollRow=0;
++   }else{this.scrollRow=0;this.drawerOpen=false;}
++   this.syncArt();
++  };
+   c.methods.show=function(view){if(this.view==='home'&&this.zone==='shelf')this.appIndex=this.index;this.view=view;this.zone='shelf';this.index=view==='home'?this.appIndex:0;this.moving=false;this.clamp();};
++  c.methods.tick=function(){this.now=new Date();this._nowMs=Date.now();};
++  c.methods.stockHome=function(){
++   // The OEM home component was captured by native-entry before the route swap.
++   // Resolve its lazy loader on demand and render it as a child: no route push,
++   // no app launch, no file write. One-way until the launcher reloads; the dock
++   // bundle on disk is untouched.
++   var vm=this;if(this.stockMode)return;
++   function show(comp){
++    if(!comp||typeof comp!=='object'){vm.status='Default menu is unavailable';return;}
++    if(vm._video){try{vm._video.stop();}catch(_){}}
++    vm._stockSettled=false;vm._stockComp=comp;vm.stockMode=true;
++    vm._stockTimer=setTimeout(function(){vm._stockSettled=true;},1500);
++   }
++   var loader=root.CleanHomeStockHome;
++   if(typeof loader==='function'){
++    try{Promise.resolve(loader()).then(function(m){show(m&&m.default?m.default:m);}).catch(function(){vm.status='Default menu failed to load';});}
++    catch(error){vm.status='Default menu failed to load';}
++   }else show(loader);
++  };
+   c.methods.armSaver=function(){
+-   if(!this._running||!sdk.router.isCurrentPathEqualTo('/Launcher'))return;
++   if(!this._nowMs||Math.abs(Date.now()-this._nowMs)>1500)this.tick();
++   if(this.stockMode||!this._running||!sdk.router.isCurrentPathEqualTo('/Launcher'))return;
+    var vm=this;try{sdk.message.emit('n2o://screen-saver/art-start-screensaver',{beforeStart:function(){return vm._running&&sdk.router.isCurrentPathEqualTo('/Launcher');}});}catch(_){}
+   };
+   c.methods.startVideo=function(){
+-   if(!this._running||!this.videoEnabled||!sdk.router.isCurrentPathEqualTo('/Launcher')||root.document.hidden)return;
++   if(this.stockMode||!this._running||!this.videoEnabled||!sdk.router.isCurrentPathEqualTo('/Launcher')||root.document.hidden)return;
+    var vm=this;
+    if(!this._video)this._video=root.OwnerVideo('home',function(s){vm.videoPlaying=s.playing;vm.videoError=s.error||'';});
+    this._video.start();
+   };
+   c.methods.start=function(){
+    if(this._running)return;originalStart.call(this);var vm=this;
+-   clearInterval(this._clock);this._clock=setInterval(function(){vm.now=new Date();},15000);
+-   this._videoVisibility=function(){if(root.document.hidden){if(vm._video)vm._video.stop();clearTimeout(vm._shineTimer);vm._shineTimer=null;}else{vm.startVideo();vm.shine();}};
++   clearInterval(this._clock);this._clock=setInterval(function(){vm.tick();},1000);this.tick();
++   this._videoVisibility=function(){if(root.document.hidden){if(vm._video)vm._video.stop();clearTimeout(vm._shineTimer);vm._shineTimer=null;}else{vm.tick();clearInterval(vm._clock);vm._clock=setInterval(function(){vm.tick();},1000);vm.startVideo();vm.shine();}};
+    root.document.addEventListener('visibilitychange',this._videoVisibility);
+    this.$nextTick(function(){vm.startVideo();vm.armSaver();vm.shine();});
+    this._imageCache=this._imageCache||[];
+@@ -69,9 +131,10 @@
+    if(this.view==='tv'){
+     if(this.index===0){if(this._video)this._video.stop();this.run(function(){return vm._platform.openSettings();});}
+     else if(this.index===1)this.show('apps');else if(this.index===2)this.show('prefs');
+-    else this.show(this.index===3?'savers':'backgrounds');
++    else if(this.index===3)this.show('savers');else if(this.index===4)this.show('backgrounds');
++    else this.stockHome();
+    }else if(this.view==='backgrounds'||this.view==='savers'){
+-    if(this.view==='savers'&&this.index===0){if(!root.OwnerMedia.selected('saver').video){this.status='Bitte zuerst ein Video hinzufügen';return;}this.run(function(){if(vm._video)vm._video.stop();return sdk.me.req('screen-saver').open('screenMode',{from:'launcher'});});return;}
++    if(this.view==='savers'&&this.index===0){if(!root.OwnerMedia.selected('saver').video){this.status='Add a video first';return;}this.run(function(){if(vm._video)vm._video.stop();return sdk.me.req('screen-saver').open('screenMode',{from:'launcher'});});return;}
+     var kind=this.view==='savers'?'saver':'home',media=root.OwnerMedia.list()[this.index-(kind==='saver'?1:0)];
+     this.run(function(){root.OwnerMedia.select(kind,media.id);vm.mediaRevision++;if(kind==='home'){if(vm._video)vm._video.stop();vm._video=null;vm.startVideo();}});
+    }else if(this.view==='prefs'){
+@@ -85,15 +148,36 @@
+    else if(this.view==='about')this.show('tv');
+    else{this.appIndex=this.index;if(this._video)this._video.stop();this.run(function(){return vm._platform.launchApp(item.appId);});}
+   };
++  c.methods.syncArt=function(){
++   if(this.view!=='home')return;
++   var list=this.shelf();if(!list.length)return;
++   var i=this.zone==='shelf'?this.index:this.appIndex;
++   i=Math.min(Math.max(0,i),list.length-1);
++   var tint=appColor(name(list[i]));
++   if(tint===this._artNow)return;
++   this._artNow=tint;
++   if(this.artSlot===0){this.artB=tint;this.artSlot=1;}else{this.artA=tint;this.artSlot=0;}
++  };
+   c.methods.handleKey=function(code){
++   if(this.stockMode)return false;
+    this.armSaver();
+    if([k.LEFT,k.RIGHT,k.UP,k.DOWN,k.ENTER,k.BACK,k.RETURN].indexOf(code)<0)return false;
+-   if(code===k.BACK||code===k.RETURN){if(this.moving){this.moving=false;return true;}if(this.view==='backgrounds'||this.view==='savers'){var menuIndex=this.view==='savers'?3:4;this.show('tv');this.index=menuIndex;return true;}if(this.view!=='home'){this.show('home');return true;}this.zone='top';this.index=0;return true;}
++   if(code===k.BACK||code===k.RETURN){if(this.moving){this.moving=false;return true;}if(this.view==='backgrounds'||this.view==='savers'){var menuIndex=this.view==='savers'?3:4;this.show('tv');this.index=menuIndex;return true;}if(this.view!=='home'){this.show('home');return true;}if(this.zone==='top'){this.zone='shelf';this.index=this.appIndex||0;this.clamp();return true;}this.zone='top';this.index=0;return true;}
+    if(code===k.ENTER){this.select();return true;}
+    if(this.moving){var ids=this.shelf().map(function(a){return String(a.appId);}),to=Math.max(0,Math.min(ids.length-1,this.index+(code===k.LEFT?-1:code===k.RIGHT?1:0)));if(to!==this.index){ids.splice(to,0,ids.splice(this.index,1)[0]);this.index=to;this.favorites=ids;this.save();}return true;}
+    if(this.zone==='top'){
+     if(code===k.DOWN){this.show(['home','inputs','tv'][this.index]);}
+     else if(code===k.LEFT)this.index--;else if(code===k.RIGHT)this.index++;
++   }else if(this.view==='home'){
++    var cols=6,count=this.shelf().length,row=Math.floor(this.index/cols);
++    if(code===k.UP&&row===0){this.appIndex=this.index;this.zone='top';this.index=this.tab();}
++    else{
++     if(code===k.UP)this.index=Math.max(0,this.index-cols);
++     else if(code===k.DOWN)this.index=Math.min(count-1,this.index+cols);
++     else if(code===k.LEFT)this.index=Math.max(0,this.index-1);
++     else if(code===k.RIGHT)this.index=Math.min(count-1,this.index+1);
++     this.appIndex=this.index;
++    }
+    }else if(this.view==='inputs'){
+     var columns=4,row=Math.floor(this.index/columns),count=this.list().length;
+     if(code===k.UP){if(row>0)this.index-=columns;else{this.zone='top';this.index=this.tab();}}
+@@ -105,31 +189,73 @@
+    else this.index+=code===k.LEFT?-1:1;
+    this.clamp();this.shine();return true;
+   };
+-  c.methods.announce=function(){if(!sdk.tts||!sdk.tts.isEnable())return;var a=this.zone==='top'?['Apps','Eingänge','Fernseher'][this.index]:this.list()[this.index];if(a)sdk.tts.speak(typeof a==='string'?a:a.appId!=null?name(a):this.sourceName(a));};
++  c.errorCaptured=function(error){
++   if(this.stockMode&&!this._stockSettled){this.stockMode=false;this.status='Default menu failed: '+((error&&error.message)||error);return false;}
++  };
++  c.methods.announce=function(){if(!sdk.tts||!sdk.tts.isEnable())return;var a=this.zone==='top'?['Apps','Inputs','TV'][this.index]:this.list()[this.index];if(a)sdk.tts.speak(typeof a==='string'?a:a.appId!=null?name(a):this.sourceName(a));};
+   c.render=function(h){
++   if(this.stockMode&&this._stockComp)return h(this._stockComp,{key:'stock-home'});
+    var vm=this,s=(root.innerWidth||1920)/1920,ink='#f7f8fa',muted='#ced1d8',tab=this.tab();
+    function px(n){return Math.round(n*s)+'px';}
+    function box(x,y,w,ht,extra){return Object.assign({position:'absolute',left:px(x),top:px(y),width:px(w),height:px(ht),boxSizing:'border-box'},extra||{});}
+    function text(key,x,y,w,ht,size,value,extra){return h('div',{key:key,style:box(x,y,w,ht,Object.assign({fontSize:px(size),lineHeight:px(ht),color:ink,fontWeight:'400',whiteSpace:'nowrap',overflow:'hidden'},extra||{}))},[value]);}
++   function rgba(c,a){
++    if(!c||c.charAt(0)!=='#')return c||'rgba(0,0,0,'+a+')';
++    return 'rgba('+parseInt(c.substr(1,2),16)+','+parseInt(c.substr(3,2),16)+','+parseInt(c.substr(5,2),16)+','+a+')';
++   }
++   function wall(c){
++    return 'radial-gradient(132% 98% at 10% 110%,'+rgba(c,.62)+' 0%,'+rgba(c,.2)+' 34%,'+rgba(c,0)+' 66%),'
++      +'radial-gradient(98% 76% at 90% -4%,'+rgba(c,.44)+' 0%,'+rgba(c,.11)+' 40%,'+rgba(c,0)+' 70%),'
++      +'linear-gradient(114deg,rgba(255,255,255,.07) 0%,rgba(255,255,255,0) 30%),'
++      +'linear-gradient(162deg,#13171f 0%,#080b11 54%,#030407 100%)';
++   }
+    function ring(key,x,y,w,ht,type){return h('div',{key:key,attrs:{'aria-hidden':'true'},style:box(x,y,w,ht,{pointerEvents:'none',backgroundImage:'url("'+asset+'metal-'+type+'-atlas.png")',backgroundRepeat:'no-repeat',backgroundSize:px(w*4)+' '+px(ht*6),backgroundPosition:px(-(vm.metalFrame%4)*w)+' '+px(-Math.floor(vm.metalFrame/4)*ht)})});}
++   function glass(key,x,y,w,ht,r,extra){
++    return h('div',{key:key,attrs:{'aria-hidden':'true'},style:box(x,y,w,ht,Object.assign({
++      pointerEvents:'none',borderRadius:px(r),
++      backgroundImage:'linear-gradient(152deg,rgba(255,255,255,.17) 0%,rgba(255,255,255,.06) 40%,rgba(255,255,255,.03) 62%,rgba(255,255,255,.13) 100%)',
++      border:px(2)+' solid rgba(255,255,255,.24)',
++      boxShadow:'inset 0 2px 0 rgba(255,255,255,.40),inset 0 -2px 0 rgba(255,255,255,.09),inset 2px 0 0 rgba(255,255,255,.10),inset -2px 0 0 rgba(255,255,255,.10),0 34px 90px rgba(0,0,0,.42)',
++      backdropFilter:'blur(26px) saturate(1.45)',WebkitBackdropFilter:'blur(26px) saturate(1.45)'
++    },extra||{}))});
++   }
+    function button(key,label,x,y,w,ht,focused,action,children,extra){return h('div',{key:key,attrs:{role:'button','aria-label':label,tabindex:focused?'0':'-1'},style:box(x,y,w,ht,Object.assign({color:ink,fontSize:px(30),outline:'none'},extra||{})),on:{click:action}},children||[label]);}
+-   var nodes=[],mediaRevision=this.mediaRevision,poster=root.OwnerMedia?root.OwnerMedia.selected('home').poster:'midnight-loop.jpg';
+-   nodes.push(h('div',{key:'poster',style:box(0,0,1920,1080,{backgroundImage:poster?'url("'+asset+poster+'")':'linear-gradient(135deg,#090e19,#14233b)',backgroundSize:'cover',opacity:this.videoPlaying?'0':'1'})}));
+-   nodes.push(h('div',{key:'shade',style:box(0,0,1920,1080,{backgroundImage:'linear-gradient(180deg,rgba(0,0,0,.38) 0%,rgba(0,0,0,0) 28%,rgba(0,0,0,0) 46%,rgba(0,0,0,.48) 65%,rgba(0,0,0,.86) 86%,rgba(0,0,0,.96) 100%)'})}));
+-   var clock=('0'+this.now.getHours()).slice(-2)+':'+('0'+this.now.getMinutes()).slice(-2);
+-   nodes.push(text('clock',1580,56,244,58,46,clock,{textAlign:'right',fontVariantNumeric:'tabular-nums'}));
+-   var days=['So.','Mo.','Di.','Mi.','Do.','Fr.','Sa.'],months=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+-   nodes.push(text('date',1500,116,324,32,22,days[this.now.getDay()]+' '+this.now.getDate()+'. '+months[this.now.getMonth()],{textAlign:'right',color:muted}));
+-   ['Apps','Eingänge','Fernseher'].forEach(function(label,i){var focused=vm.zone==='top'&&vm.index===i,selected=vm.zone==='top'?focused:tab===i,x=624+i*226;var children=[text('label',0,0,220,64,focused?31:29,label,{textAlign:'center',color:selected?ink:'#c6c7cb',fontWeight:focused?'600':'400'})];nodes.push(button('nav-'+i,label,x,66,220,64,focused,function(){vm.zone='top';vm.index=i;vm.select();},children));});
++   var nodes=[],mediaRevision=this.mediaRevision,poster=root.OwnerMedia?root.OwnerMedia.selected('home').poster:null;
++   nodes.push(h('div',{key:'poster',style:box(0,0,1920,1080,{backgroundImage:poster?'url("'+asset+poster+'")':'linear-gradient(162deg,#13171f,#080b11 54%,#030407)',backgroundSize:'cover',opacity:this.videoPlaying?'0':'1'})}));
++   if(this.view==='home'){
++    [['a',this.artA,0],['b',this.artB,1]].forEach(function(layer){
++     var live=layer[1]&&vm.artSlot===layer[2];
++     nodes.push(h('div',{key:'hero-art-'+layer[0],attrs:{'aria-hidden':'true'},style:box(0,0,1920,1080,{pointerEvents:'none',opacity:(vm.videoPlaying||!live)?'0':'1',backgroundImage:live?wall(layer[1]):'none',transition:'opacity 460ms ease-out'})}));
++    });
++   }
++   nodes.push(h('div',{key:'shade',style:box(0,0,1920,1080,{backgroundImage:'linear-gradient(180deg,rgba(0,0,0,.46) 0%,rgba(0,0,0,.10) 24%,rgba(0,0,0,0) 46%,rgba(0,0,0,.16) 74%,rgba(0,0,0,.44) 100%)'})}));
++   if(this.view==='home'){
++    var hh=('0'+this.now.getHours()).slice(-2)+':'+('0'+this.now.getMinutes()).slice(-2);
++    nodes.push(glass('clock-glass',1634,63,206,70,35));
++    // Plain block text: the flex variant right-aligned the digits on Cobalt.
++    // The 2 px top pad corrects the font's tall ascent so the digits sit
++    // optically in the middle of the 70 px pill.
++    nodes.push(text('clock',1652,63,178,70,30,hh,{textAlign:'center',paddingTop:px(2),fontVariantNumeric:'tabular-nums',color:'rgba(255,255,255,.94)',fontWeight:'500',letterSpacing:px(1)}));
++   }
++   if(this.view==='prefs'||this.view==='tv'){
++    var dn=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],mn=['January','February','March','April','May','June','July','August','September','October','November','December'];
++    nodes.push(text('date',1380,96,440,34,22,dn[this.now.getDay()]+' '+this.now.getDate()+'. '+mn[this.now.getMonth()]+' '+this.now.getFullYear(),{textAlign:'right',color:'rgba(255,255,255,.62)'}));
++   }
++   if(this.view!=='home'||this.zone==='top'){
++   if(this.zone==='top')nodes.push(h('div',{key:'top-scrim',attrs:{'aria-hidden':'true'},style:box(0,0,1920,190,{pointerEvents:'none',backgroundImage:'linear-gradient(180deg,rgba(0,0,0,.62) 0%,rgba(0,0,0,0) 100%)',transition:vm.motion?'opacity 220ms ease-out':'none'})}));
++   ['Apps','Inputs','TV'].forEach(function(label,i){var focused=vm.zone==='top'&&vm.index===i,selected=vm.zone==='top'?focused:tab===i,x=624+i*226;var children=[text('label',0,0,220,64,focused?31:29,label,{textAlign:'center',color:selected?ink:'#c6c7cb',fontWeight:focused?'600':'400'})];nodes.push(button('nav-'+i,label,x,66,220,64,focused,function(){vm.zone='top';vm.index=i;vm.select();},children));});
+    nodes.push(h('div',{key:'persistent-nav-rim',attrs:{'aria-hidden':'true'},style:box(621,63,226,70,{pointerEvents:'none',transform:'translateX('+px((this.zone==='top'?this.index:tab)*226)+')',transition:this.motion?'transform 220ms cubic-bezier(.2,.7,.2,1)':'none'})},[ring('rim',0,0,226,70,'tab')]));
+-   var appView=['home','apps','edit','reorder'].indexOf(this.view)>=0,appItems=appView?this.list():this.shelf(),appSelected=appView&&this.zone==='shelf'?this.index:this.appIndex;
+-   var appNodes=[],offset=Math.max(0,Math.min(Math.max(0,(appItems.length-6)*240),Math.max(0,(appSelected-3)*240)));
++   }
++   var homeView=this.view==='home';
++   var appView=['apps','edit','reorder'].indexOf(this.view)>=0,appNodes=[];
++   if(appView){var appItems=this.list(),appSelected=this.zone==='shelf'?this.index:this.appIndex;
++   var offset=Math.max(0,Math.min(Math.max(0,(appItems.length-6)*240),Math.max(0,(appSelected-3)*240)));
+    var selectedApp=appItems[appSelected];
+-   if(this.view!=='home')appNodes.push(text('section',96,0,1000,36,22,this.view==='apps'?'Alle Apps':this.view==='edit'?'Favoriten auswählen':'Favoriten sortieren',{color:muted}));
+-   appNodes.push(text('selected',96,42,1500,76,56,(selectedApp?name(selectedApp):'Apps auswählen')+(this.moving?' verschieben':''),{fontWeight:'500'}));
++   if(this.view!=='home')appNodes.push(text('section',96,0,1000,36,22,this.view==='apps'?'All Apps':this.view==='edit'?'Choose favourites':'Reorder favourites',{color:muted}));
++   if(this.view!=='home')appNodes.push(text('selected',96,42,1500,76,56,(selectedApp?name(selectedApp):'Choose an app')+(this.moving?' - move':''),{fontWeight:'500'}));
+    var tileNodes=[];
+    appItems.forEach(function(app,i){var focused=appView&&vm.zone==='shelf'&&vm.index===i,x=i*240-offset,width=180,src=icon(app),label=name(app),uri=src?asset+src:vm.localIcon(app);var alpha=Math.max(0,Math.min(1,(x+220)/100,(1768-x)/100));
+-    var visual=box(20,16,width,width,{borderRadius:px(38),backgroundColor:uri?'transparent':appColor(label),backgroundImage:uri?'url("'+uri+'")':'none',backgroundSize:'contain',backgroundRepeat:'no-repeat',backgroundPosition:'center',transform:focused?'scale(1.09)':'scale(1)',transformOrigin:'50% 50%',transition:vm.motion?'transform 180ms ease-out':'none'});
++    var visual=box(20,16,width,width,{borderRadius:px(42),backgroundColor:uri?'transparent':appColor(label),backgroundImage:uri?'url("'+uri+'")':'none',backgroundSize:'contain',backgroundRepeat:'no-repeat',backgroundPosition:'center',transform:focused?'scale(1.12)':'scale(1)',transformOrigin:'50% 50%',boxShadow:focused?'0 22px 54px rgba(0,0,0,.55)':'none',transition:vm.motion?'transform 180ms ease-out':'none'});
+     var content=[h('div',{key:'visual',style:visual},uri?[]:[text('wordmark',9,62,162,56,/Magenta/.test(label)?24:28,label,{textAlign:'center',fontWeight:'600'})]),text('label',-4,218,228,40,25,label,{textAlign:'center',color:focused?ink:muted})];
+     if(vm.view==='edit'&&vm.shelf().some(function(a){return a.appId===app.appId;}))content.push(text('check',158,0,40,40,28,'✓',{textAlign:'center'}));
+     tileNodes.push(button('app-'+app.appId,label,i*240,0,220,268,focused,function(){vm.zone='shelf';vm.index=i;vm.select();},content));
+@@ -137,14 +263,63 @@
+    if(appItems.length)tileNodes.push(h('div',{key:'persistent-app-rim',attrs:{'aria-hidden':'true'},style:box(-1,-5,222,222,{pointerEvents:'none',visibility:appView&&this.zone==='shelf'?'visible':'hidden',transform:'translateX('+px(appSelected*240)+')',transition:this.motion?'transform 220ms cubic-bezier(.2,.7,.2,1)':'none'})},[ring('rim',0,0,222,222,'icon')]));
+    appNodes.push(h('div',{key:'persistent-dock',style:box(0,130,1920,320,{overflow:'hidden'})},[h('div',{key:'dock-track',style:box(76,20,Math.max(1920,appItems.length*240),280,{transform:'translateX('+px(-offset)+')',transition:vm.motion?'transform 220ms cubic-bezier(.2,.7,.2,1)':'none'})},tileNodes)]));
+    var pages=Math.max(1,Math.ceil(appItems.length/3)),page=Math.min(pages-1,Math.floor(appSelected/3));
+-   for(var i=0;i<pages;i++)appNodes.push(h('div',{key:'dot-'+i,attrs:{'aria-hidden':'true'},style:box(951+(i-(pages-1)/2)*25,455,i===page?18:8,8,{borderRadius:px(4),backgroundColor:i===page?'#f5f5f7':'#787b83'})}));
+-   nodes.push(h('div',{key:'apps-panel',attrs:{'aria-hidden':appView?'false':'true'},style:box(0,552,1920,480,{visibility:appView?'visible':'hidden'})},appNodes));
+-   nodes.push(h('div',{key:'left-edge',style:box(0,0,96,1080,{pointerEvents:'none',backgroundImage:'linear-gradient(90deg,rgba(0,0,0,1),rgba(0,0,0,0))'})}));
+-   nodes.push(h('div',{key:'right-edge',style:box(1824,0,96,1080,{pointerEvents:'none',backgroundImage:'linear-gradient(270deg,rgba(0,0,0,1),rgba(0,0,0,0))'})}));
++   if(this.view!=='home')for(var i=0;i<pages;i++)appNodes.push(h('div',{key:'dot-'+i,attrs:{'aria-hidden':'true'},style:box(951+(i-(pages-1)/2)*25,455,i===page?18:8,8,{borderRadius:px(4),backgroundColor:i===page?'#f5f5f7':'#787b83'})}));
++   }
++   if(this.view==='home'){
++    var homeApps=this.shelf(),homeNodes=[];
++    // 6 x rectangular rounded cards. 260x170 keeps the tile at roughly 3:2 so a
++    // square app icon sits centred inside a brand-coloured card instead of
++    // letterboxing into a transparent hole.
++    var IW=260,IH=170,HCOLS=6,HGX=40,HGY=64,PITCH=234,BOTTOM=988,MAXR=3,REST_TOP=761;
++    var rows=Math.max(1,Math.ceil(homeApps.length/HCOLS)),shown=Math.min(rows,MAXR);
++    var vh=shown*IH+(shown-1)*HGY,vTop=BOTTOM-vh;
++    var GW=HCOLS*IW+(HCOLS-1)*HGX,HX=Math.round((1920-GW)/2);
++    var open=!!this.drawerOpen&&rows>1;
++    var sc=open?Math.max(0,Math.min(this.scrollRow,Math.max(0,rows-shown))):0;
++    var slide=vm.motion?'top 320ms cubic-bezier(.2,.7,.2,1)':'none';
++    // The frosted border wraps the top row only, in every state: it slides up
++    // with the drawer but never grows to cover the rows below it.
++    homeNodes.push(glass('home-drawer',HX-38,(open?vTop:REST_TOP)-38,GW+76,IH+76,52,{backdropFilter:'blur(16px) saturate(1.35)',WebkitBackdropFilter:'blur(16px) saturate(1.35)',transition:slide}));
++    homeApps.forEach(function(app,i){
++     var c=i%HCOLS,r=Math.floor(i/HCOLS);
++     if(open){if(r<sc||r>sc+shown-1)return;}else if(r>1)return;
++     var on=vm.zone==='shelf'&&vm.index===i,x=HX+c*(IW+HGX),y=open?vTop+(r-sc)*PITCH:REST_TOP+r*PITCH;
++     var src=icon(app),label=name(app),uri=src?asset+src:vm.localIcon(app);
++     // The glass rim and the sheen live on the card itself. A separate ring div
++     // was drawn at the unscaled bounds while the card grew 6% under it, so the
++     // highlight drifted inside the artwork and read as a mismatched frame.
++     var sheen='linear-gradient(152deg,rgba(255,255,255,.30) 0%,rgba(255,255,255,.10) 38%,rgba(255,255,255,.02) 60%,rgba(255,255,255,.16) 100%)';
++     // No brand-colour guess. Most icons already carry their own background
++     // (white Netflix/YouTube, the Disney gradient, Home Assistant's blue
++     // circle, the striped browser), so a guessed slab showed up as the wrong
++     // frame around them. The card is the app's own artwork cropped to the 3:2
++     // tile, the way tvOS fills its icons, over a neutral fallback.
++     var art=box(0,0,IW,IH,{
++      borderRadius:px(36),
++      backgroundColor:'#10141b',
++      backgroundImage:uri?(on?sheen+',url("'+uri+'")':'url("'+uri+'")'):(on?sheen:'none'),
++      backgroundSize:'100% 100%',
++      backgroundRepeat:'no-repeat',
++      backgroundPosition:'center',
++      border:on?px(2)+' solid rgba(255,255,255,.55)':'none',
++      transform:on?'scale(1.06)':'scale(1)',
++      transformOrigin:'50% 50%',
++      boxShadow:on?'inset 0 2px 0 rgba(255,255,255,.55),inset 0 -2px 0 rgba(255,255,255,.16),inset 2px 0 0 rgba(255,255,255,.12),inset -2px 0 0 rgba(255,255,255,.12),0 30px 72px rgba(0,0,0,.6)':'0 12px 30px rgba(0,0,0,.32)',
++      transition:vm.motion?'transform 170ms ease-out,box-shadow 170ms ease-out':'none'
++     });
++     var kids=[h('div',{key:'art',style:art},uri?[]:[text('wordmark',12,57,IW-24,56,label.length>7?26:34,label,{textAlign:'center',fontWeight:'600'})])];
++     homeNodes.push(button('app-'+app.appId,label,x,y,IW,IH,on,function(){vm.zone='shelf';vm.index=i;vm.appIndex=i;vm.select();},kids,{transition:slide}));
++    });
++    nodes.push(h('div',{key:'home-panel',style:box(0,0,1920,1080)},homeNodes));
++   }
++   nodes.push(h('div',{key:'apps-panel',attrs:{'aria-hidden':appView?'false':'true'},style:box(0,this.view==='home'?560:552,1920,480,{visibility:appView?'visible':'hidden'})},appNodes));
++   var edgeVis=homeView?'hidden':'visible';
++   nodes.push(h('div',{key:'left-edge',style:box(0,0,96,1080,{visibility:edgeVis,pointerEvents:'none',backgroundImage:'linear-gradient(90deg,rgba(0,0,0,1),rgba(0,0,0,0))'})}));
++   nodes.push(h('div',{key:'right-edge',style:box(1824,0,96,1080,{visibility:edgeVis,pointerEvents:'none',backgroundImage:'linear-gradient(270deg,rgba(0,0,0,1),rgba(0,0,0,0))'})}));
+    var utility=[];
+-   if(!appView){var items=this.list(),title={inputs:'Eingänge',tv:'Fernseher',prefs:'Deine Startseite',about:'Über diese Startseite',backgrounds:'Hintergrundbild',savers:'Bildschirmschoner'}[this.view]||'';utility.push(text('title',0,0,1500,80,56,title,{fontWeight:'500'}));
++   if(!appView&&!homeView){var items=this.list(),title={inputs:'Inputs',tv:'TV',prefs:'Your Home',about:'About this Home',backgrounds:'Wallpaper',savers:'Screen Saver'}[this.view]||'';utility.push(text('title',0,0,1500,80,56,title,{fontWeight:'500'}));
+     items.forEach(function(item,i){var label=typeof item==='string'?item:vm.sourceName(item),focus=vm.zone==='shelf'&&vm.index===i;var row=vm.view==='inputs',x=row?(i%4)*420:0,y=row?120+Math.floor(i/4)*135:110+i*76,w=row?384:1050,ht=64;var children=[text('label',22,0,w-44,ht,29,label,{color:focus?ink:muted})];utility.push(button('utility-'+i,label,x,y,w,ht,focus,function(){vm.zone='shelf';vm.index=i;vm.select();},children,{borderRadius:px(24),backgroundColor:focus?'rgba(255,255,255,.16)':'rgba(8,10,15,.62)',border:focus?px(2)+' solid #d3d9e4':px(1)+' solid rgba(255,255,255,.10)'}));});}
+-   nodes.push(h('div',{key:'utility-panel',style:box(96,410,1728,600,{visibility:appView?'hidden':'visible'})},utility));
++   nodes.push(h('div',{key:'utility-panel',style:box(96,410,1728,600,{visibility:appView||homeView?'hidden':'visible'})},utility));
+    if(this.status&&/failed|error|nicht/i.test(this.status))nodes.push(text('status',500,1000,1324,28,21,this.status,{textAlign:'right',color:'#ffd9b8'}));
+    return h('div',{attrs:{id:'owner-native-home'},style:{position:'absolute',left:'0',top:'0',width:'100%',height:'100%',overflow:'hidden',backgroundColor:this.videoPlaying?'transparent':'#08090d',fontFamily:'Arial, sans-serif',color:ink}},nodes);
+   };
+diff --git a/native-entry.js b/native-entry.js
+index 5f85f20..0ccceea 100644
+--- a/native-entry.js
++++ b/native-entry.js
+@@ -15,6 +15,11 @@
+    var method=root.CleanHomeAdapter==='app-list-v1'?'LAUNCHER_RECOMMEND':'REMOTECONTROL';
+    if(sdk.apc.CMDMETHOD[method]==null)return stock;
+    var route=stock.route&&stock.route.filter(function(r){return r.path==='/Launcher';})[0];if(!route)return stock;
++   // Keep the OEM home around before swapping the route component. It is the
++   // only real "default menu" on this TV: the vidaa-home app record does not
++   // exist and the All Apps route paints a blank page without the stock home
++   // behind it. Resolved lazily, only if the owner asks for it.
++   root.CleanHomeStockHome=route.component;
+    var component=root.AlvidaaFreeMyTV(sdk);
+    route.component=component;wrapped=stock;return stock;
+   }catch(error){root.CleanHomeError=String(error);return stock;}
+diff --git a/native-media.js b/native-media.js
+index 21b3128..44b2567 100644
+--- a/native-media.js
++++ b/native-media.js
+@@ -1,7 +1,7 @@
+ /* Local media catalog. No network requests, installation or external URLs. */
+ (function(root){'use strict';
+  if(root.OwnerMedia)return;
+- var cfg=root.CleanHomeConfig||{},empty={id:'off',label:'Kein Video',video:null,poster:null,cycle:0};
++ var cfg=root.CleanHomeConfig||{},empty={id:'off',label:'No video',video:null,poster:null,cycle:0};
+  var catalog=(cfg.media||[]).slice();if(!catalog.length)catalog=[empty];
+  var cache=null,filename='clean-home-media-selection.json';
+  function find(id){return catalog.filter(function(m){return m.id===id;})[0];}
+@@ -16,11 +16,11 @@
+   list:function(){return catalog.slice();},
+   selected:function(kind){return find(load()[kind==='saver'?'saver':'home'])||empty;},
+   select:function(kind,id){
+-   if(['home','saver'].indexOf(kind)<0||!find(id))throw new Error('Unbekanntes Motiv');
++   if(['home','saver'].indexOf(kind)<0||!find(id))throw new Error('Unknown title');
+    var previous=load(),next={version:1,home:previous.home,saver:previous.saver};next[kind]=id;
+-   if(!root.OwnerMediaPreview){var f=file();if(!f)throw new Error('Auswahl konnte nicht gespeichert werden');
++   if(!root.OwnerMediaPreview){var f=file();if(!f)throw new Error('Could not save the selection');
+     f.writeSync(filename,JSON.stringify(next),f.PATH.UI);var saved=JSON.parse(f.readSync(filename,f.PATH.UI));
+-    if(saved.home!==next.home||saved.saver!==next.saver)throw new Error('Auswahl konnte nicht gespeichert werden');}
++    if(saved.home!==next.home||saved.saver!==next.saver)throw new Error('Could not save the selection');}
+    cache=next;return find(id);
+   }
+  };
+diff --git a/native-platform.js b/native-platform.js
+index 5fbf03e..45ae42c 100644
+--- a/native-platform.js
++++ b/native-platform.js
+@@ -62,7 +62,7 @@
+       cancelTimer();
+       events.forEach(function (event) { sdk.message.off(event, changed); });
+     }
+-    return {
++    var api = {
+       start: function () {
+         if (running) return;
+         running = true;
+@@ -112,6 +112,7 @@
+         return sdk.me.req("all-inputs").invoke("changeSourceTo", sourceId, "launcher");
+       }
+     };
++    return api;
+   }
+   if (typeof module !== "undefined" && module.exports) module.exports = createNativePlatform;
+   else root.AlvidaaNativePlatform = createNativePlatform;
+diff --git a/native-saver.js b/native-saver.js
+index 0444dd7..fb48ae7 100644
+--- a/native-saver.js
++++ b/native-saver.js
+@@ -20,7 +20,7 @@
+     },
+     stop:function(){if(!this._active)return;this._active=false;if(this._video)this._video.stop();root.document.body.removeEventListener('key-down',this._key);sdk.message.off('n2o://screen-saver/exist-screen-saver',this._exist);},
+     close:function(){this.stop();sdk.router.back();}
+-   },render:function(h){var media=root.OwnerMedia.selected('saver');return h('div',{attrs:{id:'owner-native-saver','aria-label':media.label+' Bildschirmschoner'},style:{position:'absolute',left:'0',top:'0',width:'100%',height:'100%',backgroundColor:this.playing?'transparent':'#080b11',backgroundImage:this.playing||!media.poster?'none':'url("'+base+media.poster+'")',backgroundSize:'cover'}});}};
++   },render:function(h){var media=root.OwnerMedia.selected('saver');return h('div',{attrs:{id:'owner-native-saver','aria-label':media.label+' screen saver'},style:{position:'absolute',left:'0',top:'0',width:'100%',height:'100%',backgroundColor:this.playing?'transparent':'#080b11',backgroundImage:this.playing||!media.poster?'none':'url("'+base+media.poster+'")',backgroundSize:'cover'}});}};
+    wrapped=stock;record('installed');return stock;
+   }catch(error){record('install-error',error);return stock;}
+  };

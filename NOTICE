@@ -1,0 +1,54 @@
+# Notice
+
+This repository is a modified distribution of
+[`nineodernein/hisense-vidaa-clean-home`](https://github.com/nineodernein/hisense-vidaa-clean-home),
+commit `5efad1bc7e1f83e7a5fb545d293be8a4baa23af3`.
+
+Upstream copyright and license:
+
+> Required Notice: Copyright (c) 2026 nineodernein
+>
+> The upstream project is licensed under the PolyForm Noncommercial License
+> 1.0.0. See `LICENSE` and `LICENSE-SCOPE.md`. It is source-available for
+> noncommercial use, not an OSI open-source license.
+
+The local changes (the Apple-TV-style dock, the English UI, the drawer/clock
+geometry, the OEM escape hatch and the lane-3 install scripts) are distributed
+as `patches/0001-apple-tv-dock.patch` and the files under `pull/`, `tools/` and
+the root of this repository. To the extent these changes are copyrightable by
+this project's author, they are offered under the same PolyForm Noncommercial
+1.0.0 terms. They build on MIT-licensed portions of upstream work; the original
+MIT notices are retained in the upstream clone:
+
+- `LICENSE.alvidaa.txt` — alvidaa, MIT, Kartikey Chauhan
+- `LICENSE.free-my-tv.txt` — Free My TV / tv-launcher lineage, MIT
+- `LICENSE.metal-fx.txt` — metal-fx ring atlases, MIT, Jakub Antalik
+
+Those three files are reproduced here for attribution. The upstream clone also
+contains `CREDITS.md` and `LICENSE-SCOPE.md` with the full provenance.
+
+## What is not distributed
+
+- No Hisense/VIDAA firmware, launcher bundle (`app.js`), generated `home.js`,
+  cobalt cache, backup tarball or other OEM/vendor bytes.
+- No app icons, wallpapers, channel logos or other third-party artwork.
+- No credentials, pairing tokens, device serial numbers or LAN addresses beyond
+  the example defaults in the scripts.
+- No root, file-bridge or exploit tooling.
+
+The build combines the upstream wrappers with **your own** copy of the stock
+launcher. The result contains vendor code and is intended for your own TV only.
+Do not commit or redistribute it.
+
+## Trademarks
+
+Hisense, VIDAA and the VIDAA logo are trademarks of Hisense. Apple TV and tvOS
+are trademarks of Apple Inc. Netflix, YouTube, Disney+, Prime Video, RTL+, ARD,
+ZDF and all other app names and marks belong to their respective owners. This
+project is not affiliated with, sponsored by or endorsed by any of them.
+
+## No warranty
+
+The software is provided as-is, without warranty of any kind. Writing to a TV
+launcher partition can leave the set unusable. Use it only on hardware you own
+or are authorised to modify, and keep the backup produced by `pull/backup.sh`.

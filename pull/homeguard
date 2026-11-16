@@ -1,0 +1,97 @@
+# /var/local/homeguard - boot-time rollback + trial counter for the lane-3
+# Home replacement. Sourced by the boot hook right after the kill switch and
+# before the home engine reads the launcher bundle. No network, no browser,
+# no Pi needed.
+#
+#   touch /var/local/home.rollback   -> next boot restores launcher + cache
+#   /var/local/l3/trial = N          -> N boots for a new bundle to prove itself
+#   /var/local/l3/alive              -> the new bundle's tail writes this
+#
+# A trial that never writes `alive` and runs out of attempts is restored
+# automatically. Every restore verifies the full md5 manifest and only clears
+# the markers after it checked out, so a failed attempt is retried on the next
+# boot instead of being silently forgotten.
+L3=${HOME_L3:-/var/local/l3}
+ROOT=${HOME_ROOT:-/APPS/channelA/operation-ui/apps}
+TAR=${HOME_TAR:-$L3/launcher.tar}
+MAN=${HOME_MAN:-$L3/launcher.md5}
+CTAR=${HOME_CTAR:-$L3/cache.tar}
+CACHE=${HOME_CACHE:-/var/local/hisenseUI/cobalt_home/.cache}
+MARK=${HOME_MARK:-/var/local/home.rollback}
+TRIAL=${HOME_TRIAL:-$L3/trial}
+ALIVE=${HOME_ALIVE:-$L3/alive}
+WIPE=${HOME_WIPE:-$L3/cache-wipe}
+LOG=${HOME_LOG:-/var/local/homeguard.log}
+BB=${HOME_BB:-/usr/local/bin/busybox}
+[ -x "$BB" ] || BB=
+
+hg_md5() {
+  if [ -n "$BB" ]; then "$BB" md5sum "$1" 2>/dev/null | sed 's/ .*//'
+  else md5sum "$1" 2>/dev/null | sed 's/ .*//'; fi
+}
+
+hg_verify() {
+  hg_bad=0
+  while read -r hg_sum hg_path; do
+    [ -n "$hg_path" ] || continue
+    hg_got=$(hg_md5 "$ROOT/$hg_path")
+    if [ "$hg_got" != "$hg_sum" ]; then
+      hg_bad=$((hg_bad+1))
+      echo "homeguard: mismatch $hg_path want=$hg_sum got=${hg_got:-none}" >> "$LOG"
+    fi
+  done < "$MAN"
+  echo "$hg_bad"
+}
+
+hg_restore() {
+  hg_why=$1
+  if [ ! -s "$TAR" ] || [ ! -s "$MAN" ]; then
+    echo "homeguard: $hg_why, but backup is missing ($TAR / $MAN)" >> "$LOG"
+    return 1
+  fi
+  if [ -n "$BB" ]; then "$BB" tar -C "$ROOT" -xf "$TAR" 2>>"$LOG"
+  else tar -C "$ROOT" -xf "$TAR" 2>>"$LOG"; fi
+  hg_rc=$?
+  hg_bad=$(hg_verify)
+  hg_cache=0
+  if [ -s "$CTAR" ]; then
+    rm -rf "$CACHE/cobalt"
+    if [ -n "$BB" ]; then "$BB" tar -C "$CACHE" -xf "$CTAR" 2>>"$LOG"
+    else tar -C "$CACHE" -xf "$CTAR" 2>>"$LOG"; fi
+    [ -d "$CACHE/cobalt" ] && hg_cache=1
+  fi
+  if [ "$hg_rc" -eq 0 ] && [ "$hg_bad" -eq 0 ] && [ "$hg_cache" -eq 1 ]; then
+    echo "homeguard: RESTORED ($hg_why) files=ok cache=ok" >> "$LOG"
+    rm -f "$MARK" "$TRIAL" "$ALIVE"
+    : > "$WIPE"
+    return 0
+  fi
+  echo "homeguard: RESTORE FAILED ($hg_why) rc=$hg_rc bad=$hg_bad cache=$hg_cache - markers kept" >> "$LOG"
+  : > "$WIPE"
+  return 1
+}
+
+# A restore can lose the race against a home engine that already loaded the
+# new bundle, and Cobalt serves compiled JS by URL without revalidating. The
+# boot after any restore drops the compiled cache so stock JS recompiles.
+if [ -f "$WIPE" ]; then
+  rm -rf "$CACHE/cobalt/compiled_js" "$CACHE/cobalt/uncompiled_js"
+  rm -f "$WIPE"
+  echo "homeguard: compiled cache wiped for clean recompile" >> "$LOG"
+fi
+
+if [ -f "$MARK" ]; then
+  hg_restore "rollback marker"
+elif [ -f "$TRIAL" ]; then
+  hg_n=$(cat "$TRIAL" 2>/dev/null)
+  case "$hg_n" in ''|*[!0-9]*) hg_n=1 ;; esac
+  if [ -f "$ALIVE" ]; then
+    echo "homeguard: trial OK, bundle booted - trial disarmed" >> "$LOG"
+    rm -f "$TRIAL" "$ALIVE"
+  elif [ "$hg_n" -le 1 ]; then
+    hg_restore "trial expired (no alive marker)"
+  else
+    echo $((hg_n-1)) > "$TRIAL"
+    echo "homeguard: trial armed, $((hg_n-1)) boot(s) left" >> "$LOG"
+  fi
+fi
